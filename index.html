@@ -1069,7 +1069,12 @@ function loadGlobalExpense(){
  return exp;
 }
 
-function saveGlobalExpense(expData){ localStorage.setItem("global_routine_expense", JSON.stringify(expData)); }
+function saveGlobalExpense(expData){ 
+  localStorage.setItem("global_routine_expense", JSON.stringify(expData)); 
+  if (typeof window.saveGlobalExpenseToFirestore === "function") {
+    window.saveGlobalExpenseToFirestore(expData);
+  }
+}
 
 function key(year, month){
  if(year === undefined) year = current.getFullYear();
@@ -1101,7 +1106,18 @@ function load(year, month){
  return data;
 }
 
-function save(data, year, month){ localStorage.setItem(key(year, month), JSON.stringify(data)); }
+function save(data, year, month){
+  localStorage.setItem(key(year, month), JSON.stringify(data));
+
+  if (typeof window.saveFinanceToFirestore === "function") {
+    window.saveFinanceToFirestore(
+      data,
+      year !== undefined ? year : current.getFullYear(),
+      month !== undefined ? month : current.getMonth() + 1
+    );
+  }
+}
+
 function rupiah(n){ return new Intl.NumberFormat("id-ID",{style:"currency",currency:"IDR",maximumFractionDigits:0}).format(Number(n)||0); }
 function monthName(){ return current.toLocaleDateString("id-ID",{month:"long",year:"numeric"}); }
 
@@ -1384,7 +1400,12 @@ function updateTradingTarget(val){ let d = load(); d.tradingTarget = parseMoney(
 
 /* MATRIX SPREADSHEET DENGAN DRAG AND DROP REORDER */
 function loadMatrixMeta(){ return JSON.parse(localStorage.getItem("matrix_pinjol_meta")||"null") || defaultMatrixMeta; }
-function saveMatrixMeta(meta){ localStorage.setItem("matrix_pinjol_meta", JSON.stringify(meta)); }
+function saveMatrixMeta(meta){ 
+  localStorage.setItem("matrix_pinjol_meta", JSON.stringify(meta)); 
+  if (typeof window.saveMatrixMetaToFirestore === "function") {
+    window.saveMatrixMetaToFirestore(meta);
+  }
+}
 
 function renderMatrixTable(){
  const table = document.getElementById("matrixTable");
@@ -1480,7 +1501,6 @@ function renderModalPlatformList(){
      reorderMatrixColumns(draggedIndex, cIdx);
    });
 
-   // Touch support for Mobile Drag and Drop
    let touchStartY = 0;
    row.addEventListener("touchstart", function(e) {
      draggedIndex = cIdx;
@@ -1515,7 +1535,6 @@ function reorderMatrixColumns(fromIndex, toIndex) {
  meta.splice(toIndex, 0, movedItem);
  saveMatrixMeta(meta);
 
- // Reorder existing column data across all years/months in localStorage
  for(let y = new Date().getFullYear(); y <= 2027; y++){
    for(let m = 1; m <= 12; m++){
      let mData = load(y, m);
@@ -1639,10 +1658,20 @@ function renderSettings(){
  });
 }
 
-function renameItem(type, i, v){
- let newName = v.trim(); if(!newName) return;
- if(type === 'expense'){ let expData = loadGlobalExpense(); expData[i][0] = newName; saveGlobalExpense(expData); render(); }
- else { let d = load(); d[type][i][0] = newName; save(d); render(); }
+function renameItem(type, i, v) {
+  let newName = v.trim();
+  if (!newName) return;
+  if (type === 'expense') {
+    let expData = loadGlobalExpense();
+    expData[i][0] = newName;
+    saveGlobalExpense(expData);
+    render();
+  } else {
+    let d = load();
+    d[type][i][0] = newName;
+    save(d);
+    render();
+  }
 }
 
 function exportDataJSON(){
@@ -1753,5 +1782,119 @@ initTheme();
 applyAppSettings();
 render();
 </script>
+
+<script type="module">
+  import { initializeApp } 
+    from "https://www.gstatic.com/firebasejs/12.0.0/firebase-app.js";
+
+  import {
+    getFirestore,
+    doc,
+    setDoc,
+    getDoc,
+    serverTimestamp
+  } from "https://www.gstatic.com/firebasejs/12.0.0/firebase-firestore.js";
+
+  const firebaseConfig = {
+    apiKey: "AIzaSyCFc7Tm42BwhoZNZ57cWCb8iweYb-bNVrc",
+    authDomain: "muhamyy-545d1.firebaseapp.com",
+    databaseURL: "https://muhamyy-545d1-default-rtdb.asia-southeast1.firebasedatabase.app",
+    projectId: "muhamyy-545d1",
+    storageBucket: "muhamyy-545d1.firebasestorage.app",
+    messagingSenderId: "870416373070",
+    appId: "1:870416373070:web:c927e76b9e48be6e80ba1f",
+    measurementId: "G-BCT5L9ZDZ5"
+  };
+
+  const app = initializeApp(firebaseConfig);
+  const db = getFirestore(app);
+
+  console.log("Firebase berhasil terhubung");
+  console.log("Firestore berhasil diinisialisasi");
+
+  // Fungsi sinkronisasi umum ke Firestore per bulan
+  async function saveFinanceToFirestore(financeData, year, month) {
+    try {
+      const docId = `${year}_${String(month).padStart(2, "0")}`;
+      await setDoc(
+        doc(db, "finance", docId),
+        {
+          ...financeData,
+          updatedAt: serverTimestamp()
+        },
+        { merge: true }
+      );
+      console.log("Data berhasil dikirim ke Firestore:", docId);
+    } catch (error) {
+      console.error("Gagal mengirim data ke Firestore:", error);
+    }
+  }
+
+  // Fungsi sinkronisasi pengeluaran rutin global ke Firestore
+  async function saveGlobalExpenseToFirestore(expData) {
+    try {
+      await setDoc(
+        doc(db, "settings", "global_expense"),
+        { expense: expData, updatedAt: serverTimestamp() },
+        { merge: true }
+      );
+    } catch (err) {
+      console.error("Gagal simpan global expense ke Firestore:", err);
+    }
+  }
+
+  // Fungsi sinkronisasi metadata matrix pinjol ke Firestore
+  async function saveMatrixMetaToFirestore(metaData) {
+    try {
+      await setDoc(
+        doc(db, "settings", "matrix_meta"),
+        { meta: metaData, updatedAt: serverTimestamp() },
+        { merge: true }
+      );
+    } catch (err) {
+      console.error("Gagal simpan matrix meta ke Firestore:", err);
+    }
+  }
+
+  window.saveFinanceToFirestore = saveFinanceToFirestore;
+  window.saveGlobalExpenseToFirestore = saveGlobalExpenseToFirestore;
+  window.saveMatrixMetaToFirestore = saveMatrixMetaToFirestore;
+
+  // Memuat data dari Firestore saat aplikasi pertama dibuka (dengan fallback LocalStorage)
+  async function loadDataFromFirestore() {
+    try {
+      const year = current.getFullYear();
+      const month = current.getMonth() + 1;
+      const docId = `${year}_${String(month).padStart(2, "0")}`;
+
+      // Ambil data bulan aktif
+      const docSnap = await getDoc(doc(db, "finance", docId));
+      if (docSnap.exists()) {
+        const cloudData = docSnap.data();
+        localStorage.setItem(key(year, month), JSON.stringify(cloudData));
+      }
+
+      // Ambil data global expense
+      const expSnap = await getDoc(doc(db, "settings", "global_expense"));
+      if (expSnap.exists() && expSnap.data().expense) {
+        localStorage.setItem("global_routine_expense", JSON.stringify(expSnap.data().expense));
+      }
+
+      // Ambil data matrix meta
+      const metaSnap = await getDoc(doc(db, "settings", "matrix_meta"));
+      if (metaSnap.exists() && metaSnap.data().meta) {
+        localStorage.setItem("matrix_pinjol_meta", JSON.stringify(metaSnap.data().meta));
+      }
+
+      render();
+      console.log("Data berhasil dimuat dari Firestore (dengan fallback LocalStorage aktif)");
+    } catch (error) {
+      console.error("Gagal memuat data dari Firestore, menggunakan LocalStorage:", error);
+    }
+  }
+
+  loadDataFromFirestore();
+</script>
+
 </body>
 </html>
