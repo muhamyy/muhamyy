@@ -110,6 +110,7 @@
           measurementId: "G-BCT5L9ZDZ5"
         };
 
+        // Inisialisasi Firebase dengan Database URL eksplisit
         firebase.initializeApp(firebaseConfig);
         const db = firebase.database(firebase.app());
         const dbRef = db.ref('my_finance_data');
@@ -126,7 +127,11 @@
         };
 
         function saveDataToCloud() {
-            dbRef.set(data);
+            dbRef.set(data).then(() => {
+                console.log("Data berhasil disimpan ke Firebase!");
+            }).catch((error) => {
+                console.error("Gagal simpan ke Firebase: ", error);
+            });
         }
 
         function verifyPin() {
@@ -142,14 +147,17 @@
         }
 
         function initRealtimeSync() {
+            // Dengar perubahan data real-time dari Firebase
             dbRef.on("value", (snapshot) => {
                 const cloudData = snapshot.val();
                 if (cloudData) {
                     data = cloudData;
                 } else {
-                    saveDataToCloud();
+                    saveDataToCloud(); // Isi database jika masih kosong
                 }
                 render();
+            }, (error) => {
+                console.error("Error reading data: ", error);
             });
         }
 
